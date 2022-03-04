@@ -1,5 +1,6 @@
 package com.mc2022.template;
 
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
@@ -12,6 +13,7 @@ import androidx.recyclerview.widget.DividerItemDecoration;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import android.os.Environment;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -21,10 +23,14 @@ import android.widget.ImageView;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -34,7 +40,7 @@ public class BlankFragment extends Fragment {
     RecyclerView recyclerView;
     private NewsAdapter newsAdapter;
     private ArrayList<News> newsArrayList;
-    private static final String TAG = "Fragment";
+    private static final String TAG = "Valid URL" ;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
@@ -45,119 +51,80 @@ public class BlankFragment extends Fragment {
         newsArrayList = new ArrayList<>();
         newsAdapter = new NewsAdapter( newsArrayList);
         LinearLayoutManager linearLayoutManager = new LinearLayoutManager(requireContext(), LinearLayoutManager.VERTICAL, false);
-        DividerItemDecoration dividerItemDecoration = new DividerItemDecoration(recyclerView.getContext(), DividerItemDecoration.VERTICAL);
         recyclerView.setLayoutManager(linearLayoutManager);
         recyclerView.setAdapter(newsAdapter);
-        recyclerView.addItemDecoration(dividerItemDecoration);
-
-        new FetchData().execute();
-
+        if(checkNetworkConnection()){
+            new DownloadData().execute();
+        }
         return v;
     }
 
-    class FetchData extends AsyncTask<String, Void, String> {
+    private boolean checkNetworkConnection(){
+        ConnectivityManager connectivityManager = (ConnectivityManager) getActivity().getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
+        return networkInfo!= null;
+    }
 
-        private InputStream inputStream;
-        private BufferedReader bufferedReader;
-        private HttpURLConnection connection;
-        private static final String DEBUG_TAG = "NetworkStatusExample";
-        private  int counter = 0;
-        private int num;
+    class DownloadData extends AsyncTask<String, Integer, String> {
         final String[] url_1 = new String[1];
-        private String result;
-        ImageView imageView;
-        Bitmap bitmap;
+        StringBuilder sb;
+        String result = " ";
+        int counter = 0;
+        int num;
+        InputStream input;
 
         @Override
         protected void onPreExecute() {
             super.onPreExecute();
-            ConnectivityManager connMng = (ConnectivityManager)getActivity().getSystemService(Context.CONNECTIVITY_SERVICE);
-            NetworkInfo netInfo = connMng.getActiveNetworkInfo();
-            boolean connected = netInfo.isConnected();
-            boolean isWiFiConnected=(netInfo.getType()==ConnectivityManager.TYPE_WIFI);
-            boolean isMobileConnected=(netInfo.getType()==ConnectivityManager.TYPE_MOBILE);
-            Log.d(DEBUG_TAG, "WIFi connected="+isWiFiConnected);
-            Log.d(DEBUG_TAG,"Mobile data Connected"+isMobileConnected);
-
-            if(!connected)
-                cancel(true);
-
         }
 
         @Override
-        protected String doInBackground(String... voids) {
-
-            StringBuilder stringBuilder = null;
-
+        protected String doInBackground(String... f_url) {
             URL url = null;
             try {
                 for (num = counter; num <= 20; num++) {
                     url_1[0] = "https://petwear.in/mc2022/news/news_" + num + ".json";
+
                     News news = new News();
                     news.setNumber(num);
 
                     System.out.println(url_1[0]);
                     url = new URL(url_1[0]);
-                    connection = (HttpURLConnection) url.openConnection();
-                    // Thread.sleep(1000);
-                    Log.i("TAG", "status code: " + connection.getResponseCode());
+                    HttpURLConnection conection = (HttpURLConnection) url.openConnection();
+                    conection.setRequestMethod("GET");
+                    conection.connect();
 
-                    //Reading Response
-                    if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                        inputStream = connection.getInputStream();
-                        //Reading data from InputStream
-                        bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-                        stringBuilder = new StringBuilder();
-                        String line;
-                        while ((line = bufferedReader.readLine()) != null) {
-                            stringBuilder.append(line);
+                    if(conection.getResponseCode() == HttpURLConnection.HTTP_OK){
+                        input = new BufferedInputStream(url.openStream());
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+                        sb = new StringBuilder();
+                        String line = " ";
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line + '\n');
                         }
                     }
-                    result = stringBuilder.toString();
 
+                    result = sb.toString();
                     try {
                         JSONObject root = new JSONObject(result);
-                       news.setTitle(root.getString("title"));
+                        news.setTitle(root.getString("title"));
                         news.setBody(root.getString("body"));
                         news.setImageURL(root.getString("image-url"));
 
                     } catch (JSONException e) {
                         e.printStackTrace();
                     }
-
-
-
-                   newsArrayList.add(news);
-
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                Log.i(TAG, "error: " + e.getMessage());
-            } finally {
-                try {
-                    if (bufferedReader != null)
-                        bufferedReader.close();
-
-                    if (inputStream != null)
-                        inputStream.close();
-
-                    if(connection != null)
-                        connection.disconnect();
-
-
-                } catch (IOException e) {
-                    e.printStackTrace();
+                    newsArrayList.add(news);
+                    input.close();
                 }
             }
-            if (stringBuilder != null) {
-                return stringBuilder.toString();
-            }
-            return "no connection";
+            catch (IOException e) {
+                e.printStackTrace(); }
+            return null;
         }
         @Override
-        protected void onPostExecute(String response) {
-            super.onPostExecute(response);
-
+        protected void onPostExecute(String result) {
+            super.onPostExecute(result);
             newsAdapter.notifyDataSetChanged();
         }
     }
